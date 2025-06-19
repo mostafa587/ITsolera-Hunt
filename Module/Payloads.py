@@ -26,4 +26,3 @@ def payloads_encoder():
         })
     return encoded_payloads
 
-print(payloads_encoder())
