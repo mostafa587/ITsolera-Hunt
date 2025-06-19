@@ -1,0 +1,7 @@
+http://rest.vulnweb.com/docs/vendor/require.min.js
+http://testhtml5.vulnweb.com/static/app/services/itemsService.js
+http://testhtml5.vulnweb.com/static/app/app.js
+http://rest.vulnweb.com/docs/vendor/polyfill.js
+http://testhtml5.vulnweb.com/static/app/libs/sessvars.js
+http://testhtml5.vulnweb.com/static/app/post.js
+http://testhtml5.vulnweb.com/static/app/controllers/controllers.js
