@@ -14,6 +14,10 @@ Handles URLs by checking if they are valid and then processing them.
 """
 Alive_param_urls = os.path.join(ReconnResult_path, "param_urls.txt")
 
+if not os.path.exists(Alive_param_urls):
+    print(f"[ERROR] The file {Alive_param_urls} does not exist. Please ensure it is created by the reconnaissance module.")
+    exit(1)
+
 open_alive_param_urls = open(Alive_param_urls, "r")
 URL_file_contents = open_alive_param_urls.readlines() #This returns a list of the lines in the file
 
