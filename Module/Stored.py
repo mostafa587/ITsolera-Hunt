@@ -28,6 +28,7 @@ if cookie_val:
         exit(1)
 
 CSRF_NAMES = ['csrf', 'csrf_token', '_csrf', 'token', 'xsrf', 'xsrf_token']
+GENERIC_DEFAULT = "defaultValueHere"
 
 def extract_csrf_token(html):
     """Extract CSRF token from HTML."""
@@ -73,10 +74,10 @@ def test_xss_in_browser(url):
         return False
 
     try:
-        driver.set_page_load_timeout(15)
+        driver.set_page_load_timeout(20)
         driver.get(url)
-        time.sleep(5)  # Wait for scripts to execute
-        for _ in range(3):  # Retry alert detection
+        time.sleep(7)
+        for _ in range(3):
             try:
                 alert = driver.switch_to.alert
                 print(f"[✅] XSS Triggered: {alert.text}")
@@ -85,10 +86,6 @@ def test_xss_in_browser(url):
             except NoAlertPresentException:
                 time.sleep(1)
         print("[ ] No alert triggered.")
-        # Debug: Save page source
-        with open("page_source.html", "w", encoding="utf-8") as f:
-            f.write(driver.page_source)
-        print("[DEBUG] Saved render URL page source to page_source.html")
         return False
     except TimeoutException:
         print("[!] Page load timeout.")
@@ -115,29 +112,35 @@ def parse_line(raw):
         print(f"[!] Error parsing config line: {e}")
         return None, None, None, None
 
-def run_test(body_type, send_url, render_url, fields, payload, base_data, headers_template, csrf_url=None):
-    """Run XSS test with the given payload."""
+def run_test(body_type, send_url, render_url, fields, payload, base_data, headers_template, xss_field, csrf_url=None):
+    """Run XSS test with the given payload on a single field."""
     data = base_data.copy()
     headers = headers_template.copy()
 
-    # Inject payload into fields marked with '?'
-    xss_fields = []
+    # Inject payload into the specified xss_field and set generic default for others
     for f in fields:
         if '?' not in f:
             continue
         key = f.rstrip('!?^<>')
-        val = data.get(key, "")
-        if '<' in f:
-            data[key] = payload + val
-        elif '>' in f:
-            data[key] = val + payload
+        if key == xss_field:
+            val = data.get(key, "")
+            if '<' in f:
+                data[key] = payload + val
+            elif '>' in f:
+                data[key] = val + payload
+            else:
+                data[key] = payload
         else:
-            data[key] = payload
-        xss_fields.append(key)
+            data[key] = data.get(key, GENERIC_DEFAULT)
 
-    # Update CSRF token if provided
+    # Fetch fresh CSRF token before each POST request if provided
     if csrf_url and any(f.startswith(tuple(CSRF_NAMES)) for f in fields):
-        data.update(fetch_csrf_token(csrf_url))
+        print(f"[~] Fetching fresh CSRF token for request...")
+        csrf_data = fetch_csrf_token(csrf_url)
+        if not csrf_data:
+            print(f"[!] Failed to fetch CSRF token. Skipping request.")
+            return False
+        data.update(csrf_data)
 
     try:
         # Set default headers
@@ -152,6 +155,21 @@ def run_test(body_type, send_url, render_url, fields, payload, base_data, header
             headers["Content-Type"] = "application/x-www-form-urlencoded"
             response = session.post(send_url, headers=headers, data=data, allow_redirects=False)
 
+        # Debug output for POST request only
+        if response.request.method == "POST":
+            print("\n====== Outgoing HTTP POST Request ======")
+            print(f"[URL] {response.request.url}")
+            print(f"[METHOD] {response.request.method}")
+            print("[HEADERS]")
+            for k, v in response.request.headers.items():
+                print(f"{k}: {v}")
+            print("[BODY]")
+            body = response.request.body
+            if isinstance(body, bytes):
+                body = body.decode('utf-8', errors='ignore')
+            print(body if body else "No body")
+            print("====================================\n")
+
         # Handle redirects
         redirect_count = 0
         max_redirects = 5
@@ -163,23 +181,9 @@ def run_test(body_type, send_url, render_url, fields, payload, base_data, header
             if not redirect_url.startswith("http"):
                 redirect_url = requests.compat.urljoin(send_url, redirect_url)
             print(f"[~] Redirected to: {redirect_url}")
-            # Use GET for redirects to avoid "Unsupported method"
             response = session.get(redirect_url, headers=headers, allow_redirects=False)
             redirect_count += 1
 
-        # Debug output
-        print("\n====== Outgoing HTTP Request ======")
-        print(f"[URL] {response.request.url}")
-        print(f"[METHOD] {response.request.method}")
-        print("[HEADERS]")
-        for k, v in response.request.headers.items():
-            print(f"{k}: {v}")
-        print("[BODY]")
-        body = response.request.body
-        if isinstance(body, bytes):
-            body = body.decode('utf-8', errors='ignore')
-        print(body if body else "No body")
-        print("===================================\n")
         print(f"[+] Final Response: {response.status_code}")
         if response.status_code >= 400:
             print(f"[!] Error Response Body: {response.text[:500]}...")
@@ -187,7 +191,6 @@ def run_test(body_type, send_url, render_url, fields, payload, base_data, header
         # Consider 200, 201, or 302 as success
         if response.status_code in [200, 201, 302]:
             print(f"[+] Comment submission likely successful (Status: {response.status_code})")
-            # Test for XSS in browser
             return test_xss_in_browser(render_url)
         else:
             print(f"[!] Comment submission failed with status {response.status_code}")
@@ -223,6 +226,7 @@ def main():
                 csrf_url = None
 
         # Process fields
+        xss_fields = []
         for f in fields:
             key = f.rstrip('!?^<>')
             is_header = '^' in f
@@ -230,7 +234,6 @@ def main():
             is_static = '?' not in f and not needs_input
 
             if needs_input and not (f.startswith(tuple(CSRF_NAMES)) and csrf_url):
-                # Skip prompting for CSRF if csrf_url is provided
                 val = input(f"Enter value for {key}: ")
                 if is_header:
                     headers_template[key] = val
@@ -238,16 +241,23 @@ def main():
                     base_data[key] = val
             elif is_static:
                 base_data[key] = ""
+            if '?' in f:
+                xss_fields.append(key)
 
-        # Test each payload until one succeeds
+        # Test each payload on one field at a time
         for payload in payloads:
-            print(f"\n[~] Testing payload: {payload}")
-            success = run_test(body_type, send_url, render_url, fields, payload, base_data, headers_template, csrf_url)
-            if success:
-                print(f"[✅] XSS vulnerability confirmed with payload: {payload}")
-                break  # Stop testing this target and move to the next line
+            for xss_field in xss_fields:
+                print(f"\n[~] Testing payload: {payload} in field: {xss_field}")
+                print(f"[DEBUG] Using default '{GENERIC_DEFAULT}' for other fields: { [k for k in xss_fields if k != xss_field] }")
+                success = run_test(body_type, send_url, render_url, fields, payload, base_data, headers_template, xss_field, csrf_url)
+                if success:
+                    print(f"[✅] XSS vulnerability confirmed with payload: {payload} in field: {xss_field}")
+                    break
+                else:
+                    print(f"[ ] No XSS vulnerability found with payload: {payload} in field: {xss_field}")
             else:
-                print(f"[ ] No XSS vulnerability found with payload: {payload}")
+                continue
+            break
 
 if __name__ == "__main__":
     main()
