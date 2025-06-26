@@ -23,7 +23,10 @@ def main():
         else:
             print(f"{param_urls_path} not found.")
         return
-
+    if "--StoredXSS" in args:
+        StoredXSS = os.path.join("Module", "Stored.py")
+        subprocess.run(["python3", StoredXSS])
+        return
     # Handle --sqli
     if "--sqli" in args:
         sqli_path = os.path.join("Module", "sqli_generator.py")
