@@ -1,0 +1,2 @@
+BODYTYPE:form;https://0a0e00f104862b338000440d00ea0039.web-security-academy.net/post/comment,https://0a0e00f104862b338000440d00ea0039.web-security-academy.net/post?postId=5,csrf!,postId!,name?,comment?,email!,url!
+BODYTYPE:json;http://localhost:3000/api/comments,http://localhost:3000/view,Authorization!^,csrf!,name?,comment?,email!?<,url!?>

@@ -9,8 +9,18 @@ from selenium.common.exceptions import NoAlertPresentException, TimeoutException
 from urllib.parse import urlencode
 
 # Load payloads from file
+from pathlib import Path
+
+# Get path to the current script's directory
+BASE_DIR = Path(__file__).resolve().parent
+
+# Define your file paths relative to script location
+targets_path = BASE_DIR / "Module" / "xss_targets.txt"
+payloads_path = BASE_DIR / "Module" / "payloads.txt"
+
+
 try:
-    with open("/home/slom/Programs/tools/ITsolera-Hunt/Module/payloads.txt") as f:
+    with open(payloads_path) as f:
         payloads = [line.strip() for line in f if line.strip()]
 except FileNotFoundError:
     print("Error: Payloads file not found.")
@@ -202,7 +212,7 @@ def run_test(body_type, send_url, render_url, fields, payload, base_data, header
 
 def main():
     try:
-        with open("/home/slom/Programs/tools/ITsolera-Hunt/Module/xss_targets.txt") as f:
+        with open(targets_path) as f:
             lines = [l.strip() for l in f if l.strip() and not l.startswith("#")]
     except FileNotFoundError:
         print("Error: Config file not found.")
